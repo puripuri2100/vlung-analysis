@@ -30,8 +30,10 @@ where
       l2[center_num].push(data.clone());
     }
 
-    l1.sort();
-    l2.sort();
+    for l in l2.iter_mut() {
+      l.sort();
+    }
+
     if l1 == l2 {
       // 変動しなくなったら終了
       break;

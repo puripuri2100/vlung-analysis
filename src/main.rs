@@ -203,23 +203,10 @@ async fn main() -> Result<()> {
   img_48.save("48.png")?;
   for (i, data) in data_48.iter().enumerate() {
     let p_l = data.iter().map(|d| d.point).collect::<Vec<Point>>();
-    let img = write_image::point_to_img(rows as u32, columns as u32, &[p_l.clone()]).await;
-    img.save(format!("48_raw_{i}.png"))?;
-    let p_l = filter::opening(rows as u16, columns as u16, &p_l, 1);
-    let img = write_image::point_to_img(rows as u32, columns as u32, &[p_l.clone()]).await;
-    img.save(format!("48_x_{i}.png"))?;
-    let p_l = filter::opening(rows as u16, columns as u16, &p_l, 1);
-    let img = write_image::point_to_img(rows as u32, columns as u32, &[p_l.clone()]).await;
-    img.save(format!("48_xx_{i}.png"))?;
-    let p_l = filter::opening(rows as u16, columns as u16, &p_l, 1);
-    let img = write_image::point_to_img(rows as u32, columns as u32, &[p_l.clone()]).await;
-    img.save(format!("48_xxx_{i}.png"))?;
-    let p_l = filter::opening(rows as u16, columns as u16, &p_l, 1);
-    let img = write_image::point_to_img(rows as u32, columns as u32, &[p_l.clone()]).await;
-    img.save(format!("48_xxxx_{i}.png"))?;
-    let p_l = filter::opening(rows as u16, columns as u16, &p_l, 1);
-    let img = write_image::point_to_img(rows as u32, columns as u32, &[p_l.clone()]).await;
-    img.save(format!("48_xxxxx_{i}.png"))?;
+    let p_l_1 = filter::opening(rows as i16, columns as i16, 48, &p_l, 1);
+    let p_l_1 = filter::closing(rows as i16, columns as i16, 48, &p_l_1, 1);
+    let img = write_image::point_to_img(rows as u32, columns as u32, &[p_l_1.clone()]).await;
+    img.save(format!("48_{i}_oc.png"))?;
   }
   info!("all done");
   Ok(())

@@ -6,6 +6,7 @@ use regex::Regex;
 use tokio::fs;
 use tracing::*;
 
+mod filter;
 mod k_means;
 mod write_image;
 
@@ -157,6 +158,11 @@ async fn main() -> Result<()> {
       point: None,
       data: -750,
     },
+    //脂肪
+    Center {
+      point: None,
+      data: -53,
+    },
     //血管
     Center {
       point: None,
@@ -195,6 +201,26 @@ async fn main() -> Result<()> {
   let img_48 = write_image::data_to_img(rows as u32, columns as u32, &data_48).await;
   info!("generate img");
   img_48.save("48.png")?;
+  for (i, data) in data_48.iter().enumerate() {
+    let p_l = data.iter().map(|d| d.point).collect::<Vec<Point>>();
+    let img = write_image::point_to_img(rows as u32, columns as u32, &[p_l.clone()]).await;
+    img.save(format!("48_raw_{i}.png"))?;
+    let p_l = filter::opening(rows as u16, columns as u16, &p_l, 1);
+    let img = write_image::point_to_img(rows as u32, columns as u32, &[p_l.clone()]).await;
+    img.save(format!("48_x_{i}.png"))?;
+    let p_l = filter::opening(rows as u16, columns as u16, &p_l, 1);
+    let img = write_image::point_to_img(rows as u32, columns as u32, &[p_l.clone()]).await;
+    img.save(format!("48_xx_{i}.png"))?;
+    let p_l = filter::opening(rows as u16, columns as u16, &p_l, 1);
+    let img = write_image::point_to_img(rows as u32, columns as u32, &[p_l.clone()]).await;
+    img.save(format!("48_xxx_{i}.png"))?;
+    let p_l = filter::opening(rows as u16, columns as u16, &p_l, 1);
+    let img = write_image::point_to_img(rows as u32, columns as u32, &[p_l.clone()]).await;
+    img.save(format!("48_xxxx_{i}.png"))?;
+    let p_l = filter::opening(rows as u16, columns as u16, &p_l, 1);
+    let img = write_image::point_to_img(rows as u32, columns as u32, &[p_l.clone()]).await;
+    img.save(format!("48_xxxxx_{i}.png"))?;
+  }
   info!("all done");
   Ok(())
 }

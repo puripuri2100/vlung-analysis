@@ -87,11 +87,6 @@ async fn main() -> Result<()> {
   init_logger().await?;
 
   let mut data_lst = Vec::new();
-
-  let mut d1 = 0;
-  let mut d2 = 0;
-  let mut d3 = 0;
-  let mut d4 = 0;
   let depth_re = Regex::new(r"IMG(?<z>\d+)").unwrap();
   let mut rows = 0;
   let mut columns = 0;
@@ -139,16 +134,6 @@ async fn main() -> Result<()> {
       let x = i % rows;
       let y = i / rows;
 
-      if x == 102 && y == 252 && z == 48 {
-        d1 = *d;
-      } else if x == 48 && y == 142 && z == 48 {
-        d2 = *d;
-      } else if x == 327 && y == 268 && z == 48 {
-        d3 = *d;
-      } else if x == 379 && y == 350 && z == 48 {
-        d4 = *d;
-      }
-
       let data = Data {
         point: Point::new(x as u16, y as u16, z as u16),
         data: *d,
@@ -164,26 +149,25 @@ async fn main() -> Result<()> {
   let init_center_lst = vec![
     //胸腔
     Center {
-      point: Some(Point::new(102, 252, 48)),
-      data: d1,
+      point: None,
+      data: -990,
     },
     //肺組織
     Center {
-      point: Some(Point::new(48, 142, 48)),
-      data: d2,
+      point: None,
+      data: -750,
     },
     //血管
     Center {
-      point: Some(Point::new(327, 268, 48)),
-      data: d3,
+      point: None,
+      data: 34,
     },
     //骨
     Center {
-      point: Some(Point::new(379, 350, 48)),
-      data: d4,
+      point: None,
+      data: 300,
     },
   ];
-  println!("{d1}, {d2}, {d3}, {d4}");
 
   info!("[START] solve");
   // クラスタリング後の結果

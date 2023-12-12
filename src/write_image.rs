@@ -20,7 +20,7 @@ pub async fn data_to_img(w: u32, h: u32, data_lst: &[Vec<Data>]) -> RgbImage {
     };
     let mut data = tokio_stream::iter(data);
     while let Some(d) = data.next().await {
-      img.put_pixel(d.x as u32, d.y as u32, color);
+      img.put_pixel(d.point.x as u32, d.point.y as u32, color);
     }
   }
   img

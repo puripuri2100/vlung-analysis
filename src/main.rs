@@ -25,25 +25,58 @@ async fn init_logger() -> Result<()> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Data {
+pub struct Point {
   pub x: u16,
   pub y: u16,
   pub z: u16,
+}
+
+impl Point {
+  fn new(x: u16, y: u16, z: u16) -> Self {
+    Point { x, y, z }
+  }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Data {
+  pub point: Point,
   pub data: i16,
 }
 
-fn calc_distance(t1: &Data, t2: &Data) -> usize {
-  (t1.data as usize).abs_diff(t2.data as usize)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Center {
+  pub point: Option<Point>,
+  pub data: i16,
 }
 
-fn calc_center(lst: &[Data]) -> Data {
+// [WIP]
+fn calc_distance(center: &Center, data: &Data) -> usize {
+  (center.data as usize).abs_diff(data.data as usize)
+}
+
+// [WIP]
+fn calc_center(lst: &[Data]) -> Option<Center> {
   let len = lst.len();
-  let d = (lst.iter().map(|d| d.data as i64).sum::<i64>() / len as i64) as i16;
-  Data {
-    x: 0,
-    y: 0,
-    z: 0,
-    data: d,
+  if len == 0 {
+    None
+  } else {
+    let d = (lst.iter().map(|d| d.data as i64).sum::<i64>() / len as i64) as i16;
+    Some(Center {
+      point: None,
+      data: d,
+    })
+  }
+}
+
+// 重心の近さが閾値以下になったら同じと見なす
+// [WIP]
+fn calc_eq(lst1: &[Data], lst2: &[Data]) -> bool {
+  let center_1 = calc_center(lst1);
+  let center_2 = calc_center(lst2);
+  match (center_1, center_2) {
+    (Some(d1), Some(d2)) => d1.data.abs_diff(d2.data) == 0,
+    (None, None) => true,
+    _ => false,
   }
 }
 
@@ -117,9 +150,7 @@ async fn main() -> Result<()> {
       }
 
       let data = Data {
-        x: x as u16,
-        y: y as u16,
-        z: z as u16,
+        point: Point::new(x as u16, y as u16, z as u16),
         data: *d,
       };
       data_lst.push(data);
@@ -132,38 +163,39 @@ async fn main() -> Result<()> {
   // 概ねの場所を指定しておくことでコントロールしたい
   let init_center_lst = vec![
     //胸腔
-    Data {
-      x: 102,
-      y: 252,
-      z: 48,
+    Center {
+      point: Some(Point::new(102, 252, 48)),
       data: d1,
     },
     //肺組織
-    Data {
-      x: 48,
-      y: 142,
-      z: 48,
+    Center {
+      point: Some(Point::new(48, 142, 48)),
       data: d2,
     },
     //血管
-    Data {
-      x: 327,
-      y: 268,
-      z: 48,
+    Center {
+      point: Some(Point::new(327, 268, 48)),
       data: d3,
     },
     //骨
-    Data {
-      x: 379,
-      y: 350,
-      z: 48,
+    Center {
+      point: Some(Point::new(379, 350, 48)),
       data: d4,
     },
   ];
+  println!("{d1}, {d2}, {d3}, {d4}");
 
+  info!("[START] solve");
   // クラスタリング後の結果
-  let solved = k_means::solve(calc_distance, calc_center, init_center_lst, &data_lst).await;
-  info!("solved");
+  let solved = k_means::solve(
+    calc_distance,
+    calc_center,
+    calc_eq,
+    init_center_lst,
+    &data_lst,
+  )
+  .await;
+  info!("[END] solved");
 
   // 48枚目の画像を生成したい
   let depth = 48;
@@ -171,7 +203,7 @@ async fn main() -> Result<()> {
     .iter()
     .map(|l| {
       l.iter()
-        .filter(|d| d.z == depth)
+        .filter(|d| d.point.z == depth)
         .copied()
         .collect::<Vec<_>>()
     })

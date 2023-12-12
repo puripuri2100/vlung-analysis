@@ -1,20 +1,23 @@
 use tokio_stream::StreamExt;
 
-pub async fn solve<T, F, G>(
+pub async fn solve<T, C, F, G, E>(
   calc_distance: F,
   calc_center: G,
-  init_center: Vec<T>,
+  calc_eq: E,
+  init_center: Vec<C>,
   lst: &[T],
 ) -> Vec<Vec<T>>
 where
-  T: Sized + Clone + Eq + Ord,
-  F: Fn(&T, &T) -> usize,
-  G: Fn(&[T]) -> T,
+  T: Sized + Clone,
+  C: Sized + Clone,
+  F: Fn(&C, &T) -> usize,
+  G: Fn(&[T]) -> Option<C>,
+  E: Fn(&[T], &[T]) -> bool,
 {
   let n = init_center.len();
   let mut l1: Vec<Vec<T>> = Vec::new();
   let mut l2: Vec<Vec<T>> = vec![Vec::new(); n];
-  let mut center_lst: Vec<T> = init_center;
+  let mut center_lst: Vec<C> = init_center;
   loop {
     let mut data_stream = tokio_stream::iter(lst);
 
@@ -23,22 +26,29 @@ where
       let (center_num, _) = center_lst
         .iter()
         .enumerate()
-        .map(|(i, t)| (i, calc_distance(t, data)))
+        .map(|(i, center)| (i, calc_distance(center, data)))
         .min_by_key(|(_, d)| *d)
         .unwrap();
       // 更新
       l2[center_num].push(data.clone());
     }
 
-    for l in l2.iter_mut() {
-      l.sort();
-    }
-
-    if l1 == l2 {
+    if l1.iter().zip(l2.iter()).all(|(v1, v2)| calc_eq(v1, v2)) {
       // 変動しなくなったら終了
       break;
     } else {
-      center_lst = l2.iter().map(|l| calc_center(l)).collect();
+      tracing::info!("loop");
+      let mut new_center_list = Vec::new();
+      for i in 0..l2.len() {
+        let new_center_opt = calc_center(&l2[i]);
+        if let Some(new_center) = new_center_opt {
+          new_center_list.push(new_center)
+        } else {
+          new_center_list.push(center_lst[i].clone())
+        }
+      }
+      //center_lst = l2.iter().map(|l| calc_center(l)).collect();
+      center_lst = new_center_list;
       l1 = l2;
       l2 = vec![Vec::new(); n];
     }

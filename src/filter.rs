@@ -64,12 +64,9 @@ pub fn erosion(rows: i16, columns: i16, z: u16, data: &[Point]) -> Vec<Point> {
 pub fn opening(rows: i16, columns: i16, z: u16, data: &[Point], n: usize) -> Vec<Point> {
   let mut v = data.to_vec();
   for i in 0..n {
-    println!("erosion {i}");
     v = erosion(rows, columns, z, &v);
-    println!("end");
   }
   for i in 0..n {
-    println!("diation {i}");
     v = diation(rows, columns, z, &v);
   }
   v

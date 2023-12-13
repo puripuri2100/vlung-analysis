@@ -91,6 +91,7 @@ async fn main() -> Result<()> {
   let depth_re = Regex::new(r"IMG(?<z>\d+)").unwrap();
   let mut rows = 0;
   let mut columns = 0;
+  let mut z_lst = Vec::new();
   let mut files = fs::read_dir(args.folder).await?;
   while let Some(file) = files.next_entry().await? {
     let filename = file.file_name().into_string();
@@ -108,6 +109,7 @@ async fn main() -> Result<()> {
       .name("z")
       .map(|m| m.as_str().parse::<usize>().unwrap())
       .with_context(|| "error")?;
+    z_lst.push(z);
 
     let obj = open_file(file.path())?;
     info!("[{filename}] open file");
@@ -187,6 +189,37 @@ async fn main() -> Result<()> {
   .await;
   info!("[END] solved");
 
+  let height: usize = *z_lst.iter().max().unwrap_or(&0) + 1;
+  let group_size = solved.len();
+
+  let point_lst = solved
+    .iter()
+    .map(|l| l.iter().map(|d| d.point).collect())
+    .collect::<Vec<Vec<Point>>>();
+  let block_data = filter::gen_blocks(rows, columns, height, &point_lst);
+  let block_data = filter::opening_block(rows, columns, height, &block_data, group_size, 1).await;
+  let block_data = filter::closing_block(rows, columns, height, &block_data, group_size, 1).await;
+
+  // 48枚目の画像を生成したい
+  let depth = 48;
+  let mut data_48 = vec![vec![]; group_size];
+  for yz in block_data.iter() {
+    for z in yz.iter() {
+      let (point, group) = &z[depth];
+      if !group.is_empty() {
+        data_48[group[0]].push(*point);
+      }
+    }
+  }
+  let img_48 = write_image::point_to_img(rows as u32, columns as u32, &data_48).await;
+  info!("generate img");
+  img_48.save("48.png")?;
+  for (i, data) in data_48.iter().enumerate() {
+    let img = write_image::point_to_img(rows as u32, columns as u32, &[data.clone()]).await;
+    img.save(format!("48_{i}_oc.png"))?;
+  }
+
+  /*
   // 48枚目の画像を生成したい
   let depth = 48;
   let data_48 = solved
@@ -208,6 +241,7 @@ async fn main() -> Result<()> {
     let img = write_image::point_to_img(rows as u32, columns as u32, &[p_l_1.clone()]).await;
     img.save(format!("48_{i}_oc.png"))?;
   }
+  */
   info!("all done");
   Ok(())
 }

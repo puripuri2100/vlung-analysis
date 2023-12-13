@@ -1,5 +1,6 @@
 use crate::Point;
 use tokio_stream::StreamExt;
+use tracing::*;
 
 pub type GroupList = (Point, Vec<usize>);
 pub type Block<T> = Vec<Vec<Vec<T>>>;
@@ -76,6 +77,7 @@ pub async fn diation_block(
   let mut v = vec![vec![vec![(Point::new(0, 0, 0), vec![]); height]; columns]; rows];
   let mut yz_stream = tokio_stream::iter(data.clone());
   while let Some(yz) = yz_stream.next().await {
+    info!("[START] diation x_i");
     let mut z_stream = tokio_stream::iter(yz);
     while let Some(z_data) = z_stream.next().await {
       let mut stream = tokio_stream::iter(z_data);
@@ -94,6 +96,7 @@ pub async fn diation_block(
         v[point.x as usize][point.y as usize][point.z as usize] = (point, group);
       }
     }
+    info!("[END] diation x_i");
   }
   v
 }
@@ -111,6 +114,7 @@ pub async fn erosion_block(
   let mut v = vec![vec![vec![(Point::new(0, 0, 0), vec![]); height]; columns]; rows];
   let mut yz_stream = tokio_stream::iter(data.clone());
   while let Some(yz) = yz_stream.next().await {
+    info!("[START] erosion x_i");
     let mut z_stream = tokio_stream::iter(yz);
     while let Some(z_data) = z_stream.next().await {
       let mut stream = tokio_stream::iter(z_data);
@@ -133,6 +137,7 @@ pub async fn erosion_block(
         v[point.x as usize][point.y as usize][point.z as usize] = (point, group);
       }
     }
+    info!("[END] erosion x_i");
   }
   v
 }
@@ -147,6 +152,7 @@ pub async fn opening_block(
   group_size: usize,
   n: usize,
 ) -> Block<GroupList> {
+  info!("[START] opening block");
   let mut v = data.to_vec();
   for _ in 0..n {
     v = erosion_block(rows, columns, height, &v, group_size).await;
@@ -154,6 +160,7 @@ pub async fn opening_block(
   for _ in 0..n {
     v = diation_block(rows, columns, height, &v).await;
   }
+  info!("[END] opening block");
   v
 }
 
@@ -167,6 +174,7 @@ pub async fn closing_block(
   group_size: usize,
   n: usize,
 ) -> Block<GroupList> {
+  info!("[START] closing block");
   let mut v = data.to_vec();
   for _ in 0..n {
     v = diation_block(rows, columns, height, &v).await;
@@ -174,6 +182,7 @@ pub async fn closing_block(
   for _ in 0..n {
     v = erosion_block(rows, columns, height, &v, group_size).await;
   }
+  info!("[END] closing block");
   v
 }
 

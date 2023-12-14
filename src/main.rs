@@ -197,7 +197,9 @@ async fn main() -> Result<()> {
     .map(|l| l.iter().map(|d| d.point).collect())
     .collect::<Vec<Vec<Point>>>();
   let block_data = filter::gen_blocks(rows, columns, height, &point_lst);
+  // ノイズ除去をする
   let block_data = filter::opening_block(rows, columns, height, &block_data, group_size, 1).await;
+  // 穴埋めをする
   let block_data = filter::closing_block(rows, columns, height, &block_data, group_size, 1).await;
 
   // 48枚目の画像を生成したい
@@ -205,9 +207,10 @@ async fn main() -> Result<()> {
   let mut data_48 = vec![vec![]; group_size];
   for yz in block_data.iter() {
     for z in yz.iter() {
-      let (point, group) = &z[depth];
-      if !group.is_empty() {
-        data_48[group[0]].push(*point);
+      if let Some((point, group)) = &z[depth] {
+        if !group.is_empty() {
+          data_48[group[0]].push(*point);
+        }
       }
     }
   }
@@ -216,7 +219,7 @@ async fn main() -> Result<()> {
   img_48.save("48.png")?;
   for (i, data) in data_48.iter().enumerate() {
     let img = write_image::point_to_img(rows as u32, columns as u32, &[data.clone()]).await;
-    img.save(format!("48_{i}_oc.png"))?;
+    img.save(format!("48_x2_{i}_oc.png"))?;
   }
 
   /*

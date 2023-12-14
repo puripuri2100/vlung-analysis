@@ -205,7 +205,7 @@ async fn main() -> Result<()> {
   let block_data_raw = filter::gen_blocks(rows, columns, height, &point_lst);
   // ノイズ除去をする
   let block_data =
-    filter::opening_block(rows, columns, height, &block_data_raw, group_size, 2).await;
+    filter::opening_block(rows, columns, height, &block_data_raw, group_size, 1).await;
   // 穴埋めをする
   let block_data = filter::closing_block(rows, columns, height, &block_data, group_size, 1).await;
 
@@ -227,7 +227,7 @@ async fn main() -> Result<()> {
     }
   }
   let img_48 = write_image::point_to_img(rows as u32, columns as u32, &data_raw_48).await;
-  img_48.save("48.png")?;
+  img_48.save("48_raw.png")?;
   for (i, data) in data_raw_48.iter().enumerate() {
     let img = write_image::point_to_img(rows as u32, columns as u32, &[data.clone()]).await;
     img.save(format!("48_raw_{i}.png"))?;
@@ -256,16 +256,8 @@ async fn main() -> Result<()> {
   }
   info!("[End] generate oc img");
 
-  info!("[START] generate img");
-  let points_raw = filter::blocks_to_points(block_data_raw, group_size).await;
-  let img = write_image::point_to_img(rows as u32, columns as u32, &points_raw).await;
-  img.save("48_raw.png")?;
-  let points = filter::blocks_to_points(block_data, group_size).await;
-  let img = write_image::point_to_img(rows as u32, columns as u32, &points).await;
-  img.save("48.png")?;
-  info!("[END] generate img");
-
   info!("[START] generate JSON data");
+  let points = filter::blocks_to_points(block_data, group_size).await;
   let json_str = serde_json::to_string_pretty(&points)?;
   let mut buf = File::create(&args.output).await?;
   buf.write_all(json_str.as_bytes()).await?;

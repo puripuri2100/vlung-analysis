@@ -196,14 +196,35 @@ async fn main() -> Result<()> {
     .iter()
     .map(|l| l.iter().map(|d| d.point).collect())
     .collect::<Vec<Vec<Point>>>();
-  let block_data = filter::gen_blocks(rows, columns, height, &point_lst);
+  let block_data_raw = filter::gen_blocks(rows, columns, height, &point_lst);
   // ノイズ除去をする
-  let block_data = filter::opening_block(rows, columns, height, &block_data, group_size, 1).await;
+  let block_data = filter::opening_block(rows, columns, height, &block_data_raw, group_size, 2).await;
   // 穴埋めをする
   let block_data = filter::closing_block(rows, columns, height, &block_data, group_size, 1).await;
 
   // 48枚目の画像を生成したい
   let depth = 48;
+
+  // 元データ
+  let mut data_raw_48 = vec![vec![]; group_size];
+  for yz in block_data_raw.iter() {
+    for z in yz.iter() {
+      if let Some((point, group)) = &z[depth] {
+        if !group.is_empty() {
+          data_raw_48[group[0]].push(*point);
+        }
+      }
+    }
+  }
+  let img_48 = write_image::point_to_img(rows as u32, columns as u32, &data_raw_48).await;
+  info!("generate img");
+  img_48.save("48.png")?;
+  for (i, data) in data_raw_48.iter().enumerate() {
+    let img = write_image::point_to_img(rows as u32, columns as u32, &[data.clone()]).await;
+    img.save(format!("48_raw_{i}_oc.png"))?;
+  }
+
+  // オープニング・クロージングした後
   let mut data_48 = vec![vec![]; group_size];
   for yz in block_data.iter() {
     for z in yz.iter() {
@@ -219,32 +240,9 @@ async fn main() -> Result<()> {
   img_48.save("48.png")?;
   for (i, data) in data_48.iter().enumerate() {
     let img = write_image::point_to_img(rows as u32, columns as u32, &[data.clone()]).await;
-    img.save(format!("48_x2_{i}_oc.png"))?;
-  }
-
-  /*
-  // 48枚目の画像を生成したい
-  let depth = 48;
-  let data_48 = solved
-    .iter()
-    .map(|l| {
-      l.iter()
-        .filter(|d| d.point.z == depth)
-        .copied()
-        .collect::<Vec<_>>()
-    })
-    .collect::<Vec<_>>();
-  let img_48 = write_image::data_to_img(rows as u32, columns as u32, &data_48).await;
-  info!("generate img");
-  img_48.save("48.png")?;
-  for (i, data) in data_48.iter().enumerate() {
-    let p_l = data.iter().map(|d| d.point).collect::<Vec<Point>>();
-    let p_l_1 = filter::opening(rows as i16, columns as i16, 48, &p_l, 1);
-    let p_l_1 = filter::closing(rows as i16, columns as i16, 48, &p_l_1, 1);
-    let img = write_image::point_to_img(rows as u32, columns as u32, &[p_l_1.clone()]).await;
     img.save(format!("48_{i}_oc.png"))?;
   }
-  */
+
   info!("all done");
   Ok(())
 }

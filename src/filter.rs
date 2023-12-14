@@ -22,6 +22,27 @@ pub fn gen_blocks(
   v
 }
 
+pub async fn blocks_to_points(blocks: Block<GroupList>, group_size: usize) -> Vec<Vec<Point>> {
+  let mut v = vec![Vec::new(); group_size];
+  let mut yz_stream = tokio_stream::iter(blocks);
+  while let Some(yz) = yz_stream.next().await {
+    let mut z_stream = tokio_stream::iter(yz);
+    while let Some(z) = z_stream.next().await {
+      let mut group_stream = tokio_stream::iter(z);
+      while let Some(grouplit_opt) = group_stream.next().await {
+        if let Some((point, group)) = grouplit_opt {
+          let mut group = group.clone();
+          group.sort();
+          if let Some(g) = group.first() {
+            v[*g].push(point);
+          }
+        }
+      }
+    }
+  }
+  v
+}
+
 /// 境界チェックをした上で近傍のリストを生成
 /// 一旦周囲6近傍で
 pub fn neighborhood(rows: usize, columns: usize, height: usize, point: &Point) -> Vec<Point> {
@@ -84,22 +105,24 @@ pub async fn diation_block(
     let mut z_stream = tokio_stream::iter(yz);
     while let Some(z_data) = z_stream.next().await {
       let mut stream = tokio_stream::iter(z_data);
-      while let Some(Some((point, _))) = stream.next().await {
-        // 和集合を取る
-        let mut group = neighborhood(rows, columns, height, &point)
-          .iter()
-          .map(|p| {
-            if let Some((_, lst)) = &data[p.x as usize][p.y as usize][p.z as usize] {
-              lst.clone()
-            } else {
-              Vec::new()
-            }
-          })
-          .collect::<Vec<Vec<_>>>()
-          .concat();
-        group.sort();
-        group.dedup();
-        v[point.x as usize][point.y as usize][point.z as usize] = Some((point, group));
+      while let Some(grouplit_opt) = stream.next().await {
+        if let Some((point, _)) = grouplit_opt {
+          // 和集合を取る
+          let mut group = neighborhood(rows, columns, height, &point)
+            .iter()
+            .map(|p| {
+              if let Some((_, lst)) = &data[p.x as usize][p.y as usize][p.z as usize] {
+                lst.clone()
+              } else {
+                Vec::new()
+              }
+            })
+            .collect::<Vec<Vec<_>>>()
+            .concat();
+          group.sort();
+          group.dedup();
+          v[point.x as usize][point.y as usize][point.z as usize] = Some((point, group));
+        }
       }
     }
     info!("[END] diation x_i");
@@ -124,30 +147,32 @@ pub async fn erosion_block(
     let mut z_stream = tokio_stream::iter(yz);
     while let Some(z_data) = z_stream.next().await {
       let mut stream = tokio_stream::iter(z_data);
-      while let Some(Some((point, _))) = stream.next().await {
-        // 積集合を取る
-        let group_lst = neighborhood(rows, columns, height, &point)
-          .iter()
-          .map(|p| {
-            if let Some((_, lst)) = &data[p.x as usize][p.y as usize][p.z as usize] {
-              lst.clone()
-            } else {
-              Vec::new()
-            }
-          })
-          .collect::<Vec<Vec<_>>>();
-        let mut group = Vec::new();
-        for n in 0..group_size {
-          if group_lst
+      while let Some(grouplit_opt) = stream.next().await {
+        if let Some((point, _)) = grouplit_opt {
+          // 積集合を取る
+          let group_lst = neighborhood(rows, columns, height, &point)
             .iter()
-            .filter(|g| !g.is_empty())
-            .all(|g| g.iter().any(|n2| n == *n2))
-          {
-            group.push(n);
+            .map(|p| {
+              if let Some((_, lst)) = &data[p.x as usize][p.y as usize][p.z as usize] {
+                lst.clone()
+              } else {
+                Vec::new()
+              }
+            })
+            .collect::<Vec<Vec<_>>>();
+          let mut group = Vec::new();
+          for n in 0..group_size {
+            if group_lst
+              .iter()
+              .filter(|g| !g.is_empty())
+              .all(|g| g.iter().any(|n2| n == *n2))
+            {
+              group.push(n);
+            }
           }
+          group.sort();
+          v[point.x as usize][point.y as usize][point.z as usize] = Some((point, group));
         }
-        group.sort();
-        v[point.x as usize][point.y as usize][point.z as usize] = Some((point, group));
       }
     }
     info!("[END] erosion x_i");
@@ -201,17 +226,19 @@ pub async fn closing_block(
 
 #[cfg(test)]
 mod block_test {
-  use crate::Point;
   use crate::filter::*;
+  use crate::Point;
   #[test]
   fn check_gen_blocks() {
-    let data = vec![vec![Point::new(2,2,2), Point::new(2,2,3), Point::new(2,3,2)]];
+    let data = vec![
+      vec![Point::new(2, 2, 2), Point::new(2, 2, 3)],
+      vec![Point::new(2, 3, 2)],
+    ];
     let rows = 4;
     let columns = 4;
     let height = 5;
     let gen_blocks = gen_blocks(rows, columns, height, &data);
-    let blocks =
-    vec![
+    let blocks = vec![
       // x == 0
       vec![vec![None; height]; columns],
       // x == 1
@@ -223,9 +250,15 @@ mod block_test {
         // y == 1
         vec![None; height],
         // y == 2
-        vec![None, None, Some((Point::new(2,2,2), vec![0])), Some((Point::new(2,2,3), vec![0])), None],
+        vec![
+          None,
+          None,
+          Some((Point::new(2, 2, 2), vec![0])),
+          Some((Point::new(2, 2, 3), vec![0])),
+          None,
+        ],
         // y == 3
-        vec![None, None, Some((Point::new(2,3,2), vec![0])), None, None],
+        vec![None, None, Some((Point::new(2, 3, 2), vec![1])), None, None],
       ],
       // x == 3
       vec![vec![None; height]; columns],
@@ -233,12 +266,50 @@ mod block_test {
     assert_eq!(gen_blocks, blocks);
   }
 
+  #[tokio::test]
+  async fn check_blocks_to_points_1() {
+    let data = vec![
+      vec![Point::new(2, 2, 2), Point::new(2, 2, 3)],
+      vec![Point::new(2, 3, 2)],
+    ];
+    let rows = 4;
+    let columns = 4;
+    let height = 5;
+    let group_size = 2;
+    let gen = blocks_to_points(gen_blocks(rows, columns, height, &data), group_size).await;
+    assert_eq!(gen, data);
+  }
+
+  #[tokio::test]
+  async fn check_blocks_to_points_2() {
+    let data = vec![vec![Point::new(0, 0, 0)]];
+    let group_size = 1;
+    let gen = blocks_to_points(
+      vec![vec![vec![Some((Point::new(0, 0, 0), vec![0]))]]],
+      group_size,
+    )
+    .await;
+    assert_eq!(gen, data);
+  }
+
+  #[tokio::test]
+  async fn check_blocks_to_points_3() {
+    let data = vec![vec![], vec![Point::new(0, 0, 0)]];
+    let group_size = 2;
+    let gen = blocks_to_points(
+      vec![vec![vec![Some((Point::new(0, 0, 0), vec![1]))]]],
+      group_size,
+    )
+    .await;
+    assert_eq!(gen, data);
+  }
+
   #[test]
   fn check_neighborhood_1() {
     let rows = 4;
     let columns = 4;
     let height = 5;
-    let mut gen = neighborhood(rows, columns, height, &Point::new(0,0,0));
+    let mut gen = neighborhood(rows, columns, height, &Point::new(0, 0, 0));
     let mut expectation = vec![
       Point::new(0, 0, 1),
       Point::new(0, 1, 0),
@@ -254,7 +325,7 @@ mod block_test {
     let rows = 4;
     let columns = 4;
     let height = 5;
-    let mut gen = neighborhood(rows, columns, height, &Point::new(1,1,1));
+    let mut gen = neighborhood(rows, columns, height, &Point::new(1, 1, 1));
     let mut expectation = vec![
       Point::new(1, 1, 2),
       Point::new(1, 1, 0),
@@ -273,7 +344,7 @@ mod block_test {
     let rows = 4;
     let columns = 4;
     let height = 5;
-    let mut gen = neighborhood(rows, columns, height, &Point::new(3,3,1));
+    let mut gen = neighborhood(rows, columns, height, &Point::new(3, 3, 1));
     let mut expectation = vec![
       Point::new(3, 3, 0),
       Point::new(3, 3, 2),
@@ -285,7 +356,6 @@ mod block_test {
     assert_eq!(gen, expectation);
   }
 }
-
 
 /// 膨張
 /// 周辺8近傍の中に一つでも塗られていたら塗る

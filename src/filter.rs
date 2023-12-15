@@ -13,22 +13,23 @@ pub fn gen_blocks(
   height: usize,
   data: &[Vec<Point>],
 ) -> Block<GroupList> {
-  let mut v = vec![vec![vec![None; columns]; rows]; height];
+  let mut v = vec![vec![vec![None; rows]; columns]; height];
   for (n, lst) in data.iter().enumerate() {
     for point in lst.iter() {
-      v[point.z as usize][point.x as usize][point.y as usize] = Some((*point, vec![n]));
+      v[point.z as usize][point.y as usize][point.x as usize] = Some((*point, vec![n]));
     }
   }
   v
 }
 
+#[allow(dead_code)]
 pub async fn blocks_to_points(blocks: Block<GroupList>, group_size: usize) -> Vec<Vec<Point>> {
   let mut v = vec![Vec::new(); group_size];
   let mut xy_stream = tokio_stream::iter(blocks);
   while let Some(xy) = xy_stream.next().await {
-    let mut y_stream = tokio_stream::iter(xy);
-    while let Some(y) = y_stream.next().await {
-      let mut group_stream = tokio_stream::iter(y);
+    let mut x_stream = tokio_stream::iter(xy);
+    while let Some(x) = x_stream.next().await {
+      let mut group_stream = tokio_stream::iter(x);
       while let Some(grouplit_opt) = group_stream.next().await {
         if let Some((point, group)) = grouplit_opt {
           let mut group = group.clone();
@@ -98,20 +99,20 @@ pub async fn diation_block(
   height: usize,
   data: &Block<GroupList>,
 ) -> Block<GroupList> {
-  let mut v = vec![vec![vec![None; columns]; rows]; height];
+  let mut v = vec![vec![vec![None; rows]; columns]; height];
   let mut xy_stream = tokio_stream::iter(data.clone());
   while let Some(xy) = xy_stream.next().await {
     info!("[START] diation x_i");
-    let mut y_stream = tokio_stream::iter(xy);
-    while let Some(y_data) = y_stream.next().await {
-      let mut stream = tokio_stream::iter(y_data);
+    let mut x_stream = tokio_stream::iter(xy);
+    while let Some(x_data) = x_stream.next().await {
+      let mut stream = tokio_stream::iter(x_data);
       while let Some(grouplit_opt) = stream.next().await {
         if let Some((point, _)) = grouplit_opt {
           // 和集合を取る
           let mut group = neighborhood(rows, columns, height, &point)
             .iter()
             .map(|p| {
-              if let Some((_, lst)) = &data[p.z as usize][p.x as usize][p.y as usize] {
+              if let Some((_, lst)) = &data[p.z as usize][p.y as usize][p.x as usize] {
                 lst.clone()
               } else {
                 Vec::new()
@@ -121,7 +122,7 @@ pub async fn diation_block(
             .concat();
           group.sort();
           group.dedup();
-          v[point.z as usize][point.x as usize][point.y as usize] = Some((point, group));
+          v[point.z as usize][point.y as usize][point.x as usize] = Some((point, group));
         }
       }
     }
@@ -140,20 +141,20 @@ pub async fn erosion_block(
   data: &Block<GroupList>,
   group_size: usize,
 ) -> Block<GroupList> {
-  let mut v = vec![vec![vec![None; columns]; rows]; height];
+  let mut v = vec![vec![vec![None; rows]; columns]; height];
   let mut xy_stream = tokio_stream::iter(data.clone());
   while let Some(xy) = xy_stream.next().await {
-    info!("[START] erosion x_i");
-    let mut y_stream = tokio_stream::iter(xy);
-    while let Some(y_data) = y_stream.next().await {
-      let mut stream = tokio_stream::iter(y_data);
+    info!("[START] erosion z_i");
+    let mut x_stream = tokio_stream::iter(xy);
+    while let Some(x_data) = x_stream.next().await {
+      let mut stream = tokio_stream::iter(x_data);
       while let Some(grouplit_opt) = stream.next().await {
         if let Some((point, _)) = grouplit_opt {
           // 積集合を取る
           let group_lst = neighborhood(rows, columns, height, &point)
             .iter()
             .map(|p| {
-              if let Some((_, lst)) = &data[p.z as usize][p.x as usize][p.y as usize] {
+              if let Some((_, lst)) = &data[p.z as usize][p.y as usize][p.x as usize] {
                 lst.clone()
               } else {
                 Vec::new()
@@ -171,7 +172,7 @@ pub async fn erosion_block(
             }
           }
           group.sort();
-          v[point.z as usize][point.x as usize][point.y as usize] = Some((point, group));
+          v[point.z as usize][point.y as usize][point.x as usize] = Some((point, group));
         }
       }
     }
@@ -245,42 +246,51 @@ mod block_test {
       vec![vec![None; columns]; rows],
       // z == 2
       vec![
-        // x == 0
+        // y == 0
         vec![None; columns],
-        // x == 1
+        // y == 1
         vec![None; columns],
-        // x == 2
+        // y == 2
         vec![
-          // y == 0
+          // x == 0
           None,
-          // y == 1
+          // x == 1
           None,
-          // y == 2
+          // x == 2
           Some((Point::new(2,2,2), vec![0])),
-          // y == 3
-          Some((Point::new(2,3,2), vec![1])),
+          // x == 3
+          None
         ],
-        // x == 3
-        vec![None; columns],
+        // y == 3
+        vec![
+          // x == 0
+          None,
+          // x == 1
+          None,
+          // x == 2
+          Some((Point::new(2,3,2), vec![1])),
+          // x == 3
+          None,
+        ],
       ],
       // z == 3
       vec![
-        // x == 0
+        // y == 0
         vec![None; columns],
-        // x == 1
+        // y == 1
         vec![None; columns],
-        // x == 2
+        // y == 2
         vec![
-          // y == 0
+          // x == 0
           None,
-          // y == 1
+          // x == 1
           None,
-          // y == 2
+          // x == 2
           Some((Point::new(2,2,3), vec![0])),
-          // y == 3
+          // x == 3
           None,
         ],
-        // x == 3
+        // y == 3
         vec![None; columns],
       ],
       // z == 4

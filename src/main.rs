@@ -6,6 +6,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tokio::fs::{self, File};
 use tokio::io::AsyncWriteExt;
+use tokio_stream::StreamExt;
 use tracing::*;
 
 mod filter;
@@ -85,6 +86,55 @@ fn calc_eq(lst1: &[Data], lst2: &[Data]) -> bool {
     (None, None) => true,
     _ => false,
   }
+}
+
+async fn write_data(file: &mut File, rows: usize, columns: usize, height: usize, group_size: usize, block: &filter::Block<filter::GroupList>) -> Result<()> {
+  if group_size > 10 {
+    return Err(anyhow!("unsupported size"))
+  }
+  file.write_all(format!("{rows} {columns} {height} {group_size}\n").as_bytes()).await?;
+  let mut xy_stream = tokio_stream::iter(block);
+  while let Some(xy) = xy_stream.next().await {
+    let mut is_first = true;
+    let mut s = String::new();
+    let mut z = 0;
+    let mut now_group;
+    let mut group_len;
+    for x_lst in xy.iter() {
+      now_group = 0;
+      group_len = 0;
+      for data in x_lst.iter() {
+        if let Some((point, group)) = data {
+          if is_first {
+            z = point.z;
+            is_first = false;
+          }
+          if let Some(g) = group.iter().min() {
+            if now_group == *g {
+              group_len += 1;
+            } else {
+              // 書き出し処理
+              s.push_str(&format!("{now_group}*{group_len},"));
+              // 初期化
+              now_group = *g;
+              group_len = 1;
+            }
+          }
+        } else {
+          // 数字が無い場合は0として扱う
+          if now_group == 0 {
+            group_len += 1;
+          } else {
+            now_group = 0;
+            group_len = 1;
+          }
+        }
+      }
+      s.push_str(&format!("{now_group}*{group_len}\n"));
+    }
+    file.write_all(format!("{z}\n{s}").as_bytes()).await?;
+  }
+  Ok(())
 }
 
 #[tokio::main]
@@ -215,9 +265,9 @@ async fn main() -> Result<()> {
   // 元データ
   info!("[START] generate raw img");
   let mut data_raw_48 = vec![vec![]; group_size];
-  for yz in block_data_raw.clone().iter() {
-    for z in yz.iter() {
-      if let Some((point, group)) = &z[depth] {
+  for xy in block_data_raw[depth].iter() {
+    for x in xy.iter() {
+      if let Some((point, group)) = &x {
         let mut group = group.clone();
         group.sort();
         if let Some(g) = group.first() {
@@ -237,9 +287,9 @@ async fn main() -> Result<()> {
   // オープニング・クロージングした後
   info!("[START] generate oc img");
   let mut data_48 = vec![vec![]; group_size];
-  for yz in block_data.clone().iter() {
-    for z in yz.iter() {
-      if let Some((point, group)) = &z[depth] {
+  for xy in block_data_raw[depth].iter() {
+    for x in xy.iter() {
+      if let Some((point, group)) = &x {
         let mut group = group.clone();
         group.sort();
         if let Some(g) = group.first() {
@@ -256,12 +306,10 @@ async fn main() -> Result<()> {
   }
   info!("[End] generate oc img");
 
-  info!("[START] generate JSON data");
-  let points = filter::blocks_to_points(block_data, group_size).await;
-  let json_str = serde_json::to_string_pretty(&points)?;
+  info!("[START] generate data file");
   let mut buf = File::create(&args.output).await?;
-  buf.write_all(json_str.as_bytes()).await?;
-  info!("[END] generate JSON data");
+  write_data(&mut buf, rows, columns, height, group_size, &block_data).await?;
+  info!("[END] generate data file");
 
   info!("all done");
   Ok(())

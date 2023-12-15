@@ -3,7 +3,9 @@ use clap::Parser;
 use dicom::object::{open_file, Tag};
 use dicom_pixeldata::PixelDecoder;
 use regex::Regex;
-use tokio::fs;
+use serde::{Deserialize, Serialize};
+use tokio::fs::{self, File};
+use tokio::io::AsyncWriteExt;
 use tracing::*;
 
 mod filter;
@@ -13,8 +15,12 @@ mod write_image;
 #[derive(Parser)]
 #[command(author, version)]
 struct Args {
+  /// CTファイルのあるフォルダへのパス
   #[arg(short, long)]
   folder: String,
+  /// 生成するJSONファイルのパス
+  #[arg(short, long)]
+  output: String,
 }
 
 async fn init_logger() -> Result<()> {
@@ -25,7 +31,7 @@ async fn init_logger() -> Result<()> {
   Ok(())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct Point {
   pub x: u16,
   pub y: u16,
@@ -38,13 +44,13 @@ impl Point {
   }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct Data {
   pub point: Point,
   pub data: i16,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct Center {
   pub point: Option<Point>,
   pub data: i16,
@@ -91,6 +97,7 @@ async fn main() -> Result<()> {
   let depth_re = Regex::new(r"IMG(?<z>\d+)").unwrap();
   let mut rows = 0;
   let mut columns = 0;
+  let mut z_lst = Vec::new();
   let mut files = fs::read_dir(args.folder).await?;
   while let Some(file) = files.next_entry().await? {
     let filename = file.file_name().into_string();
@@ -108,6 +115,7 @@ async fn main() -> Result<()> {
       .name("z")
       .map(|m| m.as_str().parse::<usize>().unwrap())
       .with_context(|| "error")?;
+    z_lst.push(z);
 
     let obj = open_file(file.path())?;
     info!("[{filename}] open file");
@@ -187,27 +195,74 @@ async fn main() -> Result<()> {
   .await;
   info!("[END] solved");
 
+  let height: usize = *z_lst.iter().max().unwrap_or(&0) + 1;
+  let group_size = solved.len();
+
+  let point_lst = solved
+    .iter()
+    .map(|l| l.iter().map(|d| d.point).collect())
+    .collect::<Vec<Vec<Point>>>();
+  let block_data_raw = filter::gen_blocks(rows, columns, height, &point_lst);
+  // ノイズ除去をする
+  let block_data =
+    filter::opening_block(rows, columns, height, &block_data_raw, group_size, 1).await;
+  // 穴埋めをする
+  let block_data = filter::closing_block(rows, columns, height, &block_data, group_size, 1).await;
+
   // 48枚目の画像を生成したい
   let depth = 48;
-  let data_48 = solved
-    .iter()
-    .map(|l| {
-      l.iter()
-        .filter(|d| d.point.z == depth)
-        .copied()
-        .collect::<Vec<_>>()
-    })
-    .collect::<Vec<_>>();
-  let img_48 = write_image::data_to_img(rows as u32, columns as u32, &data_48).await;
-  info!("generate img");
+
+  // 元データ
+  info!("[START] generate raw img");
+  let mut data_raw_48 = vec![vec![]; group_size];
+  for yz in block_data_raw.clone().iter() {
+    for z in yz.iter() {
+      if let Some((point, group)) = &z[depth] {
+        let mut group = group.clone();
+        group.sort();
+        if let Some(g) = group.first() {
+          data_raw_48[*g].push(*point);
+        }
+      }
+    }
+  }
+  let img_48 = write_image::point_to_img(rows as u32, columns as u32, &data_raw_48).await;
+  img_48.save("48_raw.png")?;
+  for (i, data) in data_raw_48.iter().enumerate() {
+    let img = write_image::point_to_img(rows as u32, columns as u32, &[data.clone()]).await;
+    img.save(format!("48_raw_{i}.png"))?;
+  }
+  info!("[END] generate raw img");
+
+  // オープニング・クロージングした後
+  info!("[START] generate oc img");
+  let mut data_48 = vec![vec![]; group_size];
+  for yz in block_data.clone().iter() {
+    for z in yz.iter() {
+      if let Some((point, group)) = &z[depth] {
+        let mut group = group.clone();
+        group.sort();
+        if let Some(g) = group.first() {
+          data_48[*g].push(*point);
+        }
+      }
+    }
+  }
+  let img_48 = write_image::point_to_img(rows as u32, columns as u32, &data_48).await;
   img_48.save("48.png")?;
   for (i, data) in data_48.iter().enumerate() {
-    let p_l = data.iter().map(|d| d.point).collect::<Vec<Point>>();
-    let p_l_1 = filter::opening(rows as i16, columns as i16, 48, &p_l, 1);
-    let p_l_1 = filter::closing(rows as i16, columns as i16, 48, &p_l_1, 1);
-    let img = write_image::point_to_img(rows as u32, columns as u32, &[p_l_1.clone()]).await;
-    img.save(format!("48_{i}_oc.png"))?;
+    let img = write_image::point_to_img(rows as u32, columns as u32, &[data.clone()]).await;
+    img.save(format!("48_{i}.png"))?;
   }
+  info!("[End] generate oc img");
+
+  info!("[START] generate JSON data");
+  let points = filter::blocks_to_points(block_data, group_size).await;
+  let json_str = serde_json::to_string_pretty(&points)?;
+  let mut buf = File::create(&args.output).await?;
+  buf.write_all(json_str.as_bytes()).await?;
+  info!("[END] generate JSON data");
+
   info!("all done");
   Ok(())
 }

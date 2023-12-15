@@ -2,6 +2,8 @@ use crate::{Data, Point};
 use image::{Rgb, RgbImage};
 use tokio_stream::StreamExt;
 
+#[allow(dead_code)]
+
 pub async fn data_to_img(w: u32, h: u32, data_lst: &[Vec<Data>]) -> RgbImage {
   let mut img = RgbImage::new(w, h);
   for (i, data) in data_lst.iter().enumerate() {

@@ -257,9 +257,9 @@ mod block_test {
           // x == 1
           None,
           // x == 2
-          Some((Point::new(2,2,2), vec![0])),
+          Some((Point::new(2, 2, 2), vec![0])),
           // x == 3
-          None
+          None,
         ],
         // y == 3
         vec![
@@ -268,7 +268,7 @@ mod block_test {
           // x == 1
           None,
           // x == 2
-          Some((Point::new(2,3,2), vec![1])),
+          Some((Point::new(2, 3, 2), vec![1])),
           // x == 3
           None,
         ],
@@ -286,7 +286,7 @@ mod block_test {
           // x == 1
           None,
           // x == 2
-          Some((Point::new(2,2,3), vec![0])),
+          Some((Point::new(2, 2, 3), vec![0])),
           // x == 3
           None,
         ],

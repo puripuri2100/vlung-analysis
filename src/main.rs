@@ -19,9 +19,12 @@ struct Args {
   /// CTファイルのあるフォルダへのパス
   #[arg(short, long)]
   folder: String,
-  /// 生成するJSONファイルのパス
+  /// 生成するファイルのパス
   #[arg(short, long)]
   output: String,
+  /// 生成する画像の深さ
+  #[arg(short, long)]
+  depth_img: Option<usize>,
 }
 
 async fn init_logger() -> Result<()> {
@@ -88,11 +91,20 @@ fn calc_eq(lst1: &[Data], lst2: &[Data]) -> bool {
   }
 }
 
-async fn write_data(file: &mut File, rows: usize, columns: usize, height: usize, group_size: usize, block: &filter::Block<filter::GroupList>) -> Result<()> {
+async fn write_data(
+  file: &mut File,
+  rows: usize,
+  columns: usize,
+  height: usize,
+  group_size: usize,
+  block: &filter::Block<filter::GroupList>,
+) -> Result<()> {
   if group_size > 10 {
-    return Err(anyhow!("unsupported size"))
+    return Err(anyhow!("unsupported size"));
   }
-  file.write_all(format!("{rows} {columns} {height} {group_size}\n").as_bytes()).await?;
+  file
+    .write_all(format!("{rows} {columns} {height} {group_size}\n").as_bytes())
+    .await?;
   let mut xy_stream = tokio_stream::iter(block);
   while let Some(xy) = xy_stream.next().await {
     let mut is_first = true;
@@ -259,52 +271,52 @@ async fn main() -> Result<()> {
   // 穴埋めをする
   let block_data = filter::closing_block(rows, columns, height, &block_data, group_size, 1).await;
 
-  // 48枚目の画像を生成したい
-  let depth = 48;
 
-  // 元データ
-  info!("[START] generate raw img");
-  let mut data_raw_48 = vec![vec![]; group_size];
-  for xy in block_data_raw[depth].iter() {
-    for x in xy.iter() {
-      if let Some((point, group)) = &x {
-        let mut group = group.clone();
-        group.sort();
-        if let Some(g) = group.first() {
-          data_raw_48[*g].push(*point);
+  if let Some(depth) = args.depth_img {
+    // 元データ
+    info!("[START] generate raw img");
+    let mut data_raw_48 = vec![vec![]; group_size];
+    for xy in block_data_raw[depth].iter() {
+      for x in xy.iter() {
+        if let Some((point, group)) = &x {
+          let mut group = group.clone();
+          group.sort();
+          if let Some(g) = group.first() {
+            data_raw_48[*g].push(*point);
+          }
         }
       }
     }
-  }
-  let img_48 = write_image::point_to_img(rows as u32, columns as u32, &data_raw_48).await;
-  img_48.save("48_raw.png")?;
-  for (i, data) in data_raw_48.iter().enumerate() {
-    let img = write_image::point_to_img(rows as u32, columns as u32, &[data.clone()]).await;
-    img.save(format!("48_raw_{i}.png"))?;
-  }
-  info!("[END] generate raw img");
+    let img_48 = write_image::point_to_img(rows as u32, columns as u32, &data_raw_48).await;
+    img_48.save(format!("{depth}_raw.png"))?;
+    for (i, data) in data_raw_48.iter().enumerate() {
+      let img = write_image::point_to_img(rows as u32, columns as u32, &[data.clone()]).await;
+      img.save(format!("{depth}_raw_{i}.png"))?;
+    }
+    info!("[END] generate raw img");
 
-  // オープニング・クロージングした後
-  info!("[START] generate oc img");
-  let mut data_48 = vec![vec![]; group_size];
-  for xy in block_data[depth].iter() {
-    for x in xy.iter() {
-      if let Some((point, group)) = &x {
-        let mut group = group.clone();
-        group.sort();
-        if let Some(g) = group.first() {
-          data_48[*g].push(*point);
+    // オープニング・クロージングした後
+    info!("[START] generate oc img");
+    let mut data_48 = vec![vec![]; group_size];
+    for xy in block_data[depth].iter() {
+      for x in xy.iter() {
+        if let Some((point, group)) = &x {
+          let mut group = group.clone();
+          group.sort();
+          if let Some(g) = group.first() {
+            data_48[*g].push(*point);
+          }
         }
       }
     }
+    let img_48 = write_image::point_to_img(rows as u32, columns as u32, &data_48).await;
+    img_48.save(format!("{depth}.png"))?;
+    for (i, data) in data_48.iter().enumerate() {
+      let img = write_image::point_to_img(rows as u32, columns as u32, &[data.clone()]).await;
+      img.save(format!("{depth}_{i}.png"))?;
+    }
+    info!("[End] generate oc img");
   }
-  let img_48 = write_image::point_to_img(rows as u32, columns as u32, &data_48).await;
-  img_48.save("48.png")?;
-  for (i, data) in data_48.iter().enumerate() {
-    let img = write_image::point_to_img(rows as u32, columns as u32, &[data.clone()]).await;
-    img.save(format!("48_{i}.png"))?;
-  }
-  info!("[End] generate oc img");
 
   info!("[START] generate data file");
   let mut buf = File::create(&args.output).await?;

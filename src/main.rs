@@ -287,7 +287,7 @@ async fn main() -> Result<()> {
   // オープニング・クロージングした後
   info!("[START] generate oc img");
   let mut data_48 = vec![vec![]; group_size];
-  for xy in block_data_raw[depth].iter() {
+  for xy in block_data[depth].iter() {
     for x in xy.iter() {
       if let Some((point, group)) = &x {
         let mut group = group.clone();

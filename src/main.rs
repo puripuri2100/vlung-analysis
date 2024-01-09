@@ -11,6 +11,7 @@ use tracing::*;
 
 mod filter;
 mod k_means;
+mod marching_cubes;
 mod write_image;
 
 #[derive(Parser)]
@@ -89,64 +90,6 @@ fn calc_eq(lst1: &[Data], lst2: &[Data]) -> bool {
     (None, None) => true,
     _ => false,
   }
-}
-
-async fn write_data(
-  file: &mut File,
-  rows: usize,
-  columns: usize,
-  height: usize,
-  group_size: usize,
-  block: &filter::Block<filter::GroupList>,
-) -> Result<()> {
-  if group_size > 10 {
-    return Err(anyhow!("unsupported size"));
-  }
-  file
-    .write_all(format!("{rows} {columns} {height} {group_size}\n").as_bytes())
-    .await?;
-  let mut xy_stream = tokio_stream::iter(block);
-  while let Some(xy) = xy_stream.next().await {
-    let mut is_first = true;
-    let mut s = String::new();
-    let mut z = 0;
-    let mut now_group;
-    let mut group_len;
-    for x_lst in xy.iter() {
-      now_group = 0;
-      group_len = 0;
-      for data in x_lst.iter() {
-        if let Some((point, group)) = data {
-          if is_first {
-            z = point.z;
-            is_first = false;
-          }
-          if let Some(g) = group.iter().min() {
-            if now_group == *g {
-              group_len += 1;
-            } else {
-              // 書き出し処理
-              s.push_str(&format!("{now_group}*{group_len},"));
-              // 初期化
-              now_group = *g;
-              group_len = 1;
-            }
-          }
-        } else {
-          // 数字が無い場合は0として扱う
-          if now_group == 0 {
-            group_len += 1;
-          } else {
-            now_group = 0;
-            group_len = 1;
-          }
-        }
-      }
-      s.push_str(&format!("{now_group}*{group_len}\n"));
-    }
-    file.write_all(format!("{z}\n{s}").as_bytes()).await?;
-  }
-  Ok(())
 }
 
 #[tokio::main]
@@ -271,7 +214,6 @@ async fn main() -> Result<()> {
   // 穴埋めをする
   let block_data = filter::closing_block(rows, columns, height, &block_data, group_size, 1).await;
 
-
   if let Some(depth) = args.depth_img {
     // 元データ
     info!("[START] generate raw img");
@@ -318,10 +260,34 @@ async fn main() -> Result<()> {
     info!("[End] generate oc img");
   }
 
+  info!("[START] marching_cubes");
+  let obj_data_lst =
+    marching_cubes::marching_cubes(rows, columns, height, group_size, &block_data).await;
+  let obj_data_iter = obj_data_lst.iter().enumerate();
+  info!("[END] marching_cubes");
+  let mut obj_data_stream = tokio_stream::iter(obj_data_iter);
+  while let Some((i, obj_data)) = obj_data_stream.next().await {
+    info!("[START] write obj file({i})");
+    let mut buf = File::create(format!("{}_{i}.obj", &args.output)).await?;
+    let (v_lst, f_lst) = obj_data;
+    for (x, y, z) in v_lst.iter() {
+      buf.write_all(format!("v {x} {y} {z}\n").as_bytes()).await?;
+    }
+    let mut f_stream = tokio_stream::iter(f_lst);
+    while let Some((v1, v2, v3)) = f_stream.next().await {
+      buf
+        .write_all(format!("f {v1} {v2} {v3}\n").as_bytes())
+        .await?;
+    }
+    info!("[END] write obj file({i})");
+  }
+
+  /*
   info!("[START] generate data file");
   let mut buf = File::create(&args.output).await?;
   write_data(&mut buf, rows, columns, height, group_size, &block_data).await?;
   info!("[END] generate data file");
+  */
 
   info!("all done");
   Ok(())

@@ -144,7 +144,7 @@ async fn main() -> Result<()> {
   init_logger().await?;
 
   let mut data_lst = Vec::new();
-  let depth_re = Regex::new(r"IMG(?<z>\d+)").unwrap();
+  let depth_re = Regex::new(r"[^\d]*(?<z>\d+)[^\d]*").unwrap();
   let mut rows = 0;
   let mut columns = 0;
   let mut z_lst = Vec::new();

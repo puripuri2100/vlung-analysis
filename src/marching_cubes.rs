@@ -1,8 +1,8 @@
-use crate::filter;
+use crate::filter::{Block, GroupList};
 use crate::Point;
 use tokio_stream::StreamExt;
 
-/// ```
+/// ```comment
 ///      v7------e6------v6
 ///     / |              /|
 ///   e11 |            e10|
@@ -279,37 +279,35 @@ static TRI_TABLE: [[i32; 16]; 256] = [
 
 static EDGE: [(f32, f32, f32); 12] = [
   (0.5, 0.0, 0.0),
-  (0.5, 0.5, 0.0),
+  (1.0, 0.5, 0.0),
   (0.5, 1.0, 0.0),
   (0.0, 0.5, 0.0),
   (0.5, 0.0, 1.0),
-  (0.5, 0.5, 1.0),
+  (1.0, 0.5, 1.0),
   (0.5, 1.0, 1.0),
   (0.0, 0.5, 1.0),
   (0.0, 0.0, 0.5),
   (1.0, 0.0, 0.5),
-  (0.0, 1.0, 0.5),
   (1.0, 1.0, 0.5),
+  (0.0, 1.0, 0.5),
 ];
 
-fn get_group(p: &Point, blocks: &filter::Block<filter::GroupList>) -> usize {
+fn get_group(p: &Point, blocks: &Block<GroupList>) -> usize {
   blocks
     .get(p.z as usize)
-    .map(|xy| xy.get(p.y as usize).map(|x| x.get(p.x as usize)))
+    .and_then(|xy| xy.get(p.y as usize).map(|x| x.get(p.x as usize)))
     .flatten()
-    .flatten()
-    .map(|data_opt| {
+    .and_then(|data_opt| {
       data_opt
         .clone()
         .map(|(_, g_l)| *g_l.iter().min().unwrap_or(&0))
     })
-    .flatten()
     .unwrap_or(0)
 }
 
 /// v0相当の箇所の座標を与えられたら、v0-v7までのグループの値のリストを生成する
 ///
-/// ```
+/// ```comment
 ///      v7------e6------v6
 ///     / |              /|
 ///   e11 |            e10|
@@ -326,12 +324,12 @@ fn get_group(p: &Point, blocks: &filter::Block<filter::GroupList>) -> usize {
 /// ```
 ///
 #[rustfmt::skip]
-async fn get_group_lst(p: &Point, blocks: &filter::Block<filter::GroupList>) -> [usize; 8] {
+async fn get_group_lst(p: &Point, blocks: &Block<GroupList>) -> [usize; 8] {
   let mut v = [0; 8];
   let mut point_stream = tokio_stream::iter(vec![
-    (0, Point{x: p.x + 1, .. *p}),
-    (1, Point{x: p.x + 1, y: p.y + 1, .. *p}),
-    (2, Point{y: p.y + 1, .. *p}),
+    (0, *p),
+    (1, Point{x: p.x + 1, .. *p}),
+    (2, Point{x: p.x + 1, y: p.y + 1, .. *p}),
     (3, Point{y: p.y + 1, .. *p}),
     (4, Point{z: p.z + 1, .. *p}),
     (5, Point{x: p.x + 1, z: p.z + 1, .. *p}),
@@ -349,8 +347,8 @@ fn get_tri_table_index(group_size: usize, group_lst: &[usize; 8]) -> Vec<usize> 
   let mut vec = Vec::new();
   for group in 0..group_size {
     let mut index = 0;
-    for v in 0..8 {
-      if group_lst[v] == group {
+    for (v, item) in group_lst.iter().enumerate() {
+      if *item == group {
         index |= 1 << v;
       }
     }
@@ -364,7 +362,7 @@ pub async fn marching_cubes(
   columns: usize,
   height: usize,
   group_size: usize,
-  block: &filter::Block<filter::GroupList>,
+  block: &Block<GroupList>,
 ) -> Vec<(Vec<(f32, f32, f32)>, Vec<(usize, usize, usize)>)> {
   let mut lst = vec![(Vec::new(), Vec::new()); group_size];
   let mut v_index_lst = vec![0; group_size];
@@ -381,14 +379,14 @@ pub async fn marching_cubes(
             let t_i0 = tri_i * 3;
             let t_i1 = tri_i * 3 + 1;
             let t_i2 = tri_i * 3 + 2;
-            if tri[t_i0] <= 0 {
+            if tri[t_i0] < 0 {
               break;
             }
-            let (x0, y0, z0) = EDGE[tri[t_i0] as usize];
+            let (x0, y0, z0) = EDGE[tri[t_i2] as usize];
             lst[i].0.push((x as f32 + x0, y as f32 + y0, z as f32 + z0));
             let (x1, y1, z1) = EDGE[tri[t_i1] as usize];
             lst[i].0.push((x as f32 + x1, y as f32 + y1, z as f32 + z1));
-            let (x2, y2, z2) = EDGE[tri[t_i2] as usize];
+            let (x2, y2, z2) = EDGE[tri[t_i0] as usize];
             lst[i].0.push((x as f32 + x2, y as f32 + y2, z as f32 + z2));
             lst[i]
               .1

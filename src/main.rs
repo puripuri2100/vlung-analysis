@@ -267,19 +267,21 @@ async fn main() -> Result<()> {
   info!("[END] marching_cubes");
   let mut obj_data_stream = tokio_stream::iter(obj_data_iter);
   while let Some((i, obj_data)) = obj_data_stream.next().await {
-    info!("[START] write obj file({i})");
-    let mut buf = File::create(format!("{}_{i}.obj", &args.output)).await?;
-    let (v_lst, f_lst) = obj_data;
-    for (x, y, z) in v_lst.iter() {
-      buf.write_all(format!("v {x} {y} {z}\n").as_bytes()).await?;
+    if i != 0 {
+      info!("[START] write obj file({i})");
+      let mut buf = File::create(format!("{}_{i}.obj", &args.output)).await?;
+      let (v_lst, f_lst) = obj_data;
+      for (x, y, z) in v_lst.iter() {
+        buf.write_all(format!("v {x} {y} {z}\n").as_bytes()).await?;
+      }
+      let mut f_stream = tokio_stream::iter(f_lst);
+      while let Some((v1, v2, v3)) = f_stream.next().await {
+        buf
+          .write_all(format!("f {v1} {v2} {v3}\n").as_bytes())
+          .await?;
+      }
+      info!("[END] write obj file({i})");
     }
-    let mut f_stream = tokio_stream::iter(f_lst);
-    while let Some((v1, v2, v3)) = f_stream.next().await {
-      buf
-        .write_all(format!("f {v1} {v2} {v3}\n").as_bytes())
-        .await?;
-    }
-    info!("[END] write obj file({i})");
   }
 
   /*

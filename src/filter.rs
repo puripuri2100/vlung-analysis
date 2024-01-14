@@ -102,7 +102,6 @@ pub async fn diation_block(
   let mut v = vec![vec![vec![None; rows]; columns]; height];
   let mut xy_stream = tokio_stream::iter(data.clone());
   while let Some(xy) = xy_stream.next().await {
-    info!("[START] diation x_i");
     let mut x_stream = tokio_stream::iter(xy);
     while let Some(x_data) = x_stream.next().await {
       let mut stream = tokio_stream::iter(x_data);
@@ -126,7 +125,6 @@ pub async fn diation_block(
         }
       }
     }
-    info!("[END] diation x_i");
   }
   v
 }
@@ -144,7 +142,6 @@ pub async fn erosion_block(
   let mut v = vec![vec![vec![None; rows]; columns]; height];
   let mut xy_stream = tokio_stream::iter(data.clone());
   while let Some(xy) = xy_stream.next().await {
-    info!("[START] erosion z_i");
     let mut x_stream = tokio_stream::iter(xy);
     while let Some(x_data) = x_stream.next().await {
       let mut stream = tokio_stream::iter(x_data);
@@ -176,7 +173,6 @@ pub async fn erosion_block(
         }
       }
     }
-    info!("[END] erosion x_i");
   }
   v
 }

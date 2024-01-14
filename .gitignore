@@ -4,3 +4,4 @@
 *.jpeg
 *.json
 .DS_Store
+obj

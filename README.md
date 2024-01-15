@@ -1,4 +1,4 @@
-# vlung
+# vlung-analysis
 
 CT画像データを解析し、各部位ごとのOBJファイルを生成するソフトウェア
 
@@ -29,11 +29,19 @@ git clone https://github.com/puripuri2100/vlung-analysis.git
 cargo install --path vlung-analysis
 ```
 
+現在Windowsではライブラリの都合でうまくインストールできないことを確認しています。そのため、リポジトリをcloneしたうえで
+
+```rust
+cargo run --release -- --help
+```
+
+のようにして起動するようにしてください。
+
 ## 使い方
 
 引数がいくつかあります。詳しくは
 
-```rust
+```sh
 vlung-analysis --help
 ```
 
@@ -54,7 +62,7 @@ vlung-analysis --help
 
 ## CT画像データの取得方法
 
-自分自身のCT画像データを持っている方は少ないと思うので、試しに使ってみたい方はCC0ライセンスのもとで自分が後悔している気胸時の肺のCT画像データを使ってみてください：<https://github.com/puripuri2100/lung>
+自分自身のCT画像データを持っている方は少ないと思うので、試しに使ってみたい方はCC0ライセンスのもとで自分が公開している気胸時の肺のCT画像データを使ってみてください：<https://github.com/puripuri2100/lung>
 
 自分自身のCT画像データを取得してみたい方は撮影された病院の制度を利用して入手してみてください。例えば筑波大学附属病院では「診療記録等の開示」という制度が用意されています。：<https://www.hosp.tsukuba.ac.jp/outpatient/outpatient/release.html>
 

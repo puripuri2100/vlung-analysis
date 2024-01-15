@@ -189,11 +189,15 @@ pub async fn opening_block(
 ) -> Block<GroupList> {
   info!("[START] opening block");
   let mut v = data.to_vec();
-  for _ in 0..n {
+  for i in 0..n {
+    info!("[START] erosion({i})");
     v = erosion_block(rows, columns, height, &v, group_size).await;
+    info!("[END] erosion({i})");
   }
-  for _ in 0..n {
+  for i in 0..n {
+    info!("[START] diation({i})");
     v = diation_block(rows, columns, height, &v).await;
+    info!("[END] diation({i})");
   }
   info!("[END] opening block");
   v
@@ -211,11 +215,15 @@ pub async fn closing_block(
 ) -> Block<GroupList> {
   info!("[START] closing block");
   let mut v = data.to_vec();
-  for _ in 0..n {
+  for i in 0..n {
+    info!("[START] diation({i})");
     v = diation_block(rows, columns, height, &v).await;
+    info!("[END] diation({i})");
   }
-  for _ in 0..n {
+  for i in 0..n {
+    info!("[START] erosion({i})");
     v = erosion_block(rows, columns, height, &v, group_size).await;
+    info!("[END] erosion({i})");
   }
   info!("[END] closing block");
   v

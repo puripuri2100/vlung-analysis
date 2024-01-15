@@ -26,6 +26,19 @@ struct Args {
   /// 生成する画像の深さ
   #[arg(short, long)]
   depth_img: Option<usize>,
+  /// 解析を行う範囲の座標のスタート
+  #[arg(short, long, value_delimiter = ' ', num_args = 3)]
+  start_range: Option<Vec<usize>>,
+  /// 解析を行う範囲の座標の終点
+  #[arg(short, long, value_delimiter = ' ', num_args = 3)]
+  end_range: Option<Vec<usize>>,
+  /// ノイズ除去の濃さを数値で与える
+  #[arg(short, long, default_value = "1")]
+  noise_removal: usize,
+  /// 部位を分割する際に与える初期値です
+  /// 先頭の値はデフォルト値として内部で扱われます
+  #[arg(short, long, value_delimiter = ' ', num_args = 2..)]
+  init_colors: Option<Vec<i16>>,
 }
 
 async fn init_logger() -> Result<()> {
@@ -148,9 +161,22 @@ async fn main() -> Result<()> {
       let x = i % rows;
       let y = i / rows;
 
+      let mut color_data = *d;
+      if let Some(start_range) = &args.start_range {
+        if start_range[0] > x || start_range[1] > y || start_range[2] > z {
+          // 範囲外なので真っ黒にする
+          color_data = -1000
+        }
+      }
+      if let Some(end_range) = &args.end_range {
+        if end_range[0] < x || end_range[1] < y || end_range[2] < z {
+          // 範囲外なので真っ黒にする
+          color_data = -1000
+        }
+      }
       let data = Data {
         point: Point::new(x as u16, y as u16, z as u16),
-        data: *d,
+        data: color_data,
       };
       data_lst.push(data);
     }
@@ -160,33 +186,42 @@ async fn main() -> Result<()> {
 
   // 初期値の重心
   // 概ねの場所を指定しておくことでコントロールしたい
-  let init_center_lst = vec![
-    //胸腔
-    Center {
-      point: None,
-      data: -990,
-    },
-    //肺組織
-    Center {
-      point: None,
-      data: -750,
-    },
-    //脂肪
-    Center {
-      point: None,
-      data: -53,
-    },
-    //血管
-    Center {
-      point: None,
-      data: 34,
-    },
-    //骨
-    Center {
-      point: None,
-      data: 300,
-    },
-  ];
+  let init_center_lst = if let Some(v) = args.init_colors {
+    v.iter()
+      .map(|i| Center {
+        point: None,
+        data: *i,
+      })
+      .collect()
+  } else {
+    vec![
+      //胸腔
+      Center {
+        point: None,
+        data: -990,
+      },
+      //肺組織
+      Center {
+        point: None,
+        data: -750,
+      },
+      //脂肪
+      Center {
+        point: None,
+        data: -53,
+      },
+      //血管
+      Center {
+        point: None,
+        data: 34,
+      },
+      //骨
+      Center {
+        point: None,
+        data: 300,
+      },
+    ]
+  };
 
   info!("[START] solve");
   // クラスタリング後の結果
@@ -209,10 +244,25 @@ async fn main() -> Result<()> {
     .collect::<Vec<Vec<Point>>>();
   let block_data_raw = filter::gen_blocks(rows, columns, height, &point_lst);
   // ノイズ除去をする
-  let block_data =
-    filter::opening_block(rows, columns, height, &block_data_raw, group_size, 1).await;
+  let block_data = filter::opening_block(
+    rows,
+    columns,
+    height,
+    &block_data_raw,
+    group_size,
+    args.noise_removal,
+  )
+  .await;
   // 穴埋めをする
-  let block_data = filter::closing_block(rows, columns, height, &block_data, group_size, 1).await;
+  let block_data = filter::closing_block(
+    rows,
+    columns,
+    height,
+    &block_data,
+    group_size,
+    args.noise_removal,
+  )
+  .await;
 
   if let Some(depth) = args.depth_img {
     // 元データ
